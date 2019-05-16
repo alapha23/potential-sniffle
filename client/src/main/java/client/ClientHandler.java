@@ -6,11 +6,15 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.util.CharsetUtil;
 
+import java.io.RandomAccessFile;
+
 public class ClientHandler extends SimpleChannelInboundHandler<ByteBuf> {
 
     @Override
     public void channelActive(ChannelHandlerContext channelHandlerContext){
         channelHandlerContext.writeAndFlush(Unpooled.copiedBuffer("Netty Rocks!", CharsetUtil.UTF_8));
+
+        //RandomAccessFile fromFile = new RandomAccessFile("fromFile.txt", "rw");
     }
 
     @Override

@@ -16,6 +16,7 @@ public class main {
 
         System.out.println("Hello World");
 
+
         // 1. create event loop group
         EventLoopGroup group = new NioEventLoopGroup();
 
@@ -49,8 +50,5 @@ public class main {
                 System.out.println("Failed to shut down relay server");
             }
         }
-
     }
-
-
 }

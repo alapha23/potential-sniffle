@@ -12,10 +12,13 @@ public class HelloServerHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         ByteBuf inBuffer = (ByteBuf) msg;
+        System.out.println("Buffer is direct: " + inBuffer.isDirect());
 
+        //ctx.channel().remoteAddress();
         String received = inBuffer.toString(CharsetUtil.UTF_8);
         System.out.println("Server received: " + received);
 
+        // ctx is the context we write to the channel
         ctx.write(Unpooled.copiedBuffer("Hello " + received, CharsetUtil.UTF_8));
     }
 
