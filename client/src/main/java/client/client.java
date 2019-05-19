@@ -1,45 +1,51 @@
 package client;
 
-import io.netty.bootstrap.Bootstrap;
+
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelInitializer;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.bootstrap.Bootstrap;
 
-import java.net.InetSocketAddress;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 
-public class client {
+public class Client {
 
-    public static void main(String[]args){
-        // create event loop group
+    public static void main(String[] args) throws IOException, InterruptedException {
+        new Client("localhost", 8000).run();
+    }
+
+
+    private final String host;
+    private final int port;
+
+    public Client(String host, int port) {
+        this.host = host;
+        this.port = port;
+    }
+
+    public void run() throws InterruptedException, IOException {
         EventLoopGroup group = new NioEventLoopGroup();
-        try{
-            // create and configure bootstrap
-            Bootstrap clientBootstrap = new Bootstrap();
-            clientBootstrap.group(group);
-            clientBootstrap.channel(NioSocketChannel.class);
-            clientBootstrap.remoteAddress(new InetSocketAddress("localhost", 9999));
-            clientBootstrap.handler(new ChannelInitializer<SocketChannel>() {
-                protected void initChannel(SocketChannel socketChannel) throws Exception {
-                    socketChannel.pipeline().addLast(new ClientHandler());
-                }
-            });
-            // create channelinitializer
-            Channel channel = clientBootstrap.connect().sync().channel();
-            //Scanner sc = new Scanner(System.in);
+        try {
+            Bootstrap bootstrap = new io.netty.bootstrap.Bootstrap()
+                    .group(group)
+                    .channel(NioSocketChannel.class)
+                    .handler(new client.ChatClientHandlerInitializer());
+
+            Channel channel = bootstrap.connect(host, port).sync().channel();
+
+            BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+
             while (true) {
-            //    System.out.print("Enter json filename: ");
-            //    channel.writeAndFlush(Unpooled.copiedBuffer(buffer, CharsetUtil.UTF_8));
+                String msg = in.readLine();
+
+                channel.writeAndFlush(msg + "\r\n");
             }
-            //channelFuture.channel().closeFuture().sync();
-        } catch(Exception e) {
-            System.out.println("Bootstrap creation failed or channel init failed. Did you start the server?");
-        }finally {
-            try {
-                group.shutdownGracefully().sync();
-            } catch(Exception e) {System.out.println("Shutdown gracelessly");}
+        }
+        finally {
+            group.shutdownGracefully();
         }
     }
 }
