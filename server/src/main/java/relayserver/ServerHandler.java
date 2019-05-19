@@ -1,5 +1,6 @@
 package relayserver;
 
+import com.google.gson.Gson;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
@@ -12,59 +13,84 @@ import io.netty.util.concurrent.DefaultEventExecutor;
 public class ServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
 
     private static final ChannelGroup channels = new DefaultChannelGroup(new DefaultEventExecutor());
+    Gson gson = new Gson();
 
     @Override
-    public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
+    public void handlerAdded(ChannelHandlerContext ctx) {
         Channel incoming = ctx.channel();
 
-        incoming.writeAndFlush("[SERVER] - " + "WELCOME!\r\n");
-
-        System.out.println("[SERVER] - " + incoming.remoteAddress() + " has joined\r\n");
-        // broadcast new joined address to all channels
+        // DEBUG
+        incoming.writeAndFlush("DEBUG\r\n");
+        System.out.println("New client "+incoming.id().toString()+" connected, isWritable: "+incoming.isWritable());
+        // broadcast new joined client channel id to all channels
+        ExampleMsg msg =  new ExampleMsg();
+        msg.op = "n";
+        msg.data = incoming.id().toString();
         for (Channel channel : channels) {
-            channel.writeAndFlush("[SERVER] - " + incoming.remoteAddress() + " has joined\r\n");
+            channel.writeAndFlush(gson.toJson(msg, ExampleMsg.class));
         }
+
+        // reply with a list of existing clients
+        msg.op = "c";
+        msg.data = "";
+        for (Channel channel : channels) {
+                msg.data += channel.id().toString()+" ";
+        }
+        // DEBUG
+        System.out.println("Send contacts "+msg.data);
+        incoming.writeAndFlush(gson.toJson(msg, ExampleMsg.class));
+
+        // update channel list
         channels.add(incoming);
+        // TODO: check for channel id collision?
     }
 
     @Override
     public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
         Channel incoming = ctx.channel();
+
         // broadcast newly left channel to all
+        ExampleMsg msg = new ExampleMsg();
+        msg.op = "r";
+        msg.data = incoming.id().toString();
         for (Channel channel : channels) {
-            channel.writeAndFlush("[SERVER] - " + incoming.remoteAddress() + "has left\r\n");
+            channel.writeAndFlush(gson.toJson(msg, ExampleMsg.class));
         }
+        // update channel list
         channels.remove(incoming);
     }
 
     @Override
     public void channelRead0(ChannelHandlerContext ctx, ByteBuf inBuffer) throws Exception {
-        // add to client list
-        ClientNode n = new ClientNode(inBuffer);
+        // Expects a json containing dst, op, data
 
-        String received = inBuffer.toString(CharsetUtil.UTF_8);
-        System.out.println("Received: " + received);
+        ClientOp n = new ClientOp(inBuffer);
 
-        // write back to the channel
-        ctx.writeAndFlush(Unpooled.copiedBuffer("Server says " + received, CharsetUtil.UTF_8));
+        // parse json
+        String dst = n.parseDst();
+        int flag = 0;
+
+        // send msg
+        for (Channel channel : channels) {
+            if(channel.id().toString().equals(dst)) {
+                channel.writeAndFlush(Unpooled.copiedBuffer(inBuffer.toString(), CharsetUtil.UTF_8));
+                flag = 1;
+            }
+        }
+
+        // Reply success or not
+        ExampleMsg msg = new ExampleMsg();
+        msg.op = "f";
+        msg.data = flag==1?"Success":"Failure. Invalid command";
+        ctx.writeAndFlush(Unpooled.copiedBuffer(gson.toJson(msg, ExampleMsg.class), CharsetUtil.UTF_8));
     }
-
-   /* @Override
-    public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
-        System.out.println("[SERVER] channelReadComplete");
-        ctx.writeAndFlush(Unpooled.EMPTY_BUFFER)
-                .addListener(ChannelFutureListener.CLOSE);
-    }*/
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
         cause.printStackTrace();
+        channels.close();
         ctx.close();
     }
 
-    @Override
-    public void channelActive(ChannelHandlerContext ctx) throws Exception {
-        // this channel gets Active
-    }
 }
 

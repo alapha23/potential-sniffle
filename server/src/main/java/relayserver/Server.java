@@ -10,7 +10,6 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 
 import java.net.InetSocketAddress;
 
-import static relayserver.AllClients.allChannels;
 
 public class Server {
 
@@ -44,7 +43,6 @@ public class Server {
             e.printStackTrace();
         } finally {
             try {
-                allChannels.close().awaitUninterruptibly();
                 bossGroup.shutdownGracefully().sync();
                 workerGroup.shutdownGracefully().sync();
             } catch(Exception e) {
