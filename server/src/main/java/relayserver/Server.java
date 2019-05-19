@@ -10,20 +10,21 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 
 import java.net.InetSocketAddress;
 
-public class main {
+import static relayserver.AllClients.allChannels;
+
+public class Server {
 
     public static void main(String args[]) {
 
-        System.out.println("Hello World");
-
-
         // 1. create event loop group
-        EventLoopGroup group = new NioEventLoopGroup();
+        EventLoopGroup bossGroup = new NioEventLoopGroup();
+        EventLoopGroup workerGroup = new NioEventLoopGroup();
+
 
         try{
             // 2. create and configure ServerBootStrap
             ServerBootstrap serverBootstrap = new ServerBootstrap();
-            serverBootstrap.group(group);
+            serverBootstrap.group(bossGroup, workerGroup);
             serverBootstrap.channel(NioServerSocketChannel.class);
             serverBootstrap.localAddress(new InetSocketAddress("localhost", 9999));
 
@@ -32,23 +33,24 @@ public class main {
             // each accepted channel socket is a child of the server socket
             serverBootstrap.childHandler(new ChannelInitializer<SocketChannel>() {
                 protected void initChannel(SocketChannel socketChannel) throws Exception {
-                    socketChannel.pipeline().addLast(new HelloServerHandler());
+                    socketChannel.pipeline().addLast(new ServerHandler());
                 }
             });
             // boot the Netty server
             // sync() blocks until server has started
-            ChannelFuture channelFuture = serverBootstrap.bind().sync();
+            ChannelFuture channelFuture = serverBootstrap.bind(9999).sync();
             channelFuture.channel().closeFuture().sync();
         } catch(Exception e){
             e.printStackTrace();
         } finally {
-            //
             try {
-                group.shutdownGracefully().sync();
-            } catch(Exception e)
-            {
+                allChannels.close().awaitUninterruptibly();
+                bossGroup.shutdownGracefully().sync();
+                workerGroup.shutdownGracefully().sync();
+            } catch(Exception e) {
                 System.out.println("Failed to shut down relay server");
             }
         }
     }
 }
+

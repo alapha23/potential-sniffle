@@ -3,23 +3,35 @@ package client;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.util.CharsetUtil;
 
 import java.io.RandomAccessFile;
+import java.util.Scanner;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-public class ClientHandler extends SimpleChannelInboundHandler<ByteBuf> {
+public class ClientHandler extends ChannelInboundHandlerAdapter {
+    //private final ExecutorService executorService = Executors.newSingleThreadExecutor();
 
     @Override
     public void channelActive(ChannelHandlerContext channelHandlerContext){
-        channelHandlerContext.writeAndFlush(Unpooled.copiedBuffer("Netty Rocks!", CharsetUtil.UTF_8));
-
-        //RandomAccessFile fromFile = new RandomAccessFile("fromFile.txt", "rw");
-    }
+        //System.out.println("Channel activated!");
+        //Scanner sc =  new Scanner(System.in);
+        //executorService.execute(() -> {
+        //    while(true) {
+//                System.out.print("> ");
+//                String buffer = sc.nextLine();
+//                channelHandlerContext.writeAndFlush(Unpooled.copiedBuffer(buffer, CharsetUtil.UTF_8));
+        //    }
+        //});
+   }
 
     @Override
-    public void channelRead0(ChannelHandlerContext channelHandlerContext, ByteBuf in) {
-        System.out.println("Client received: " + in.toString(CharsetUtil.UTF_8));
+    public void channelRead(ChannelHandlerContext channelHandlerContext, Object msg) {
+        ByteBuf in = (ByteBuf) msg;
+        System.out.println("[SERVER] " + in.toString(CharsetUtil.UTF_8));
     }
 
     @Override
