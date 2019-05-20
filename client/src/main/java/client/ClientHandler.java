@@ -2,57 +2,58 @@ package client;
 
 import com.google.gson.Gson;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufInputStream;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.util.CharsetUtil;
 import relayserver.ExampleMsg;
 
-import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Scanner;
 
-public class ClientHandler extends ChannelInboundHandlerAdapter {
+import static client.client.canSend;
+
+public class ClientHandler extends SimpleChannelInboundHandler<ByteBuf>{
     Gson gson = new Gson();
-    ArrayList clients = new ArrayList<String>();
+    public static String clientID = "";
+
     @Override
     public void channelActive(ChannelHandlerContext channelHandlerContext){
+        Scanner sc = new Scanner(System.in);
+        ExampleMsg msg = new ExampleMsg();
 
+        while(clientID.length() == 0) {
+            System.out.print("Enter Client Name: ");
+            clientID = sc.nextLine();
+        }
+        // register new client to the server
+        msg.op = "n";
+        msg.data = clientID;
+
+        channelHandlerContext.writeAndFlush(Unpooled.copiedBuffer(gson.toJson(msg, ExampleMsg.class), CharsetUtil.UTF_8));
+        canSend = 1;
    }
 
     @Override
-    public void channelRead(ChannelHandlerContext channelHandlerContext, Object inBuf) {
-        // n - new client, whose id specified by data; add it to our channel list
+    public void channelRead0(ChannelHandlerContext channelHandlerContext, ByteBuf bytebuf) throws Exception{
         // s - send msg to existing client; - not needed now, since client sends to server only for messaging
-        // r - remove client, whose id specified by data.
         // f - flag on whether previous instruction was sucessful or not
-        // c - receive list of all clients, ids in data. needed for new clients
-        ByteBuf bytebuf = (ByteBuf)inBuf;
-        ExampleMsg msg = gson.fromJson(bytebuf.toString(), ExampleMsg.class);
-        System.out.println("Received "+bytebuf.toString());
+        final ByteBufInputStream bis = new ByteBufInputStream(bytebuf);
+
+        String strbuf = bis.readLine();
+        ExampleMsg msg = gson.fromJson(strbuf, ExampleMsg.class);
         switch (msg.op.charAt(0)) {
-            case 'n':
-                clients.add(msg.data);
-                break;
             case 's':
                 // receive msg from others
-                System.out.println(msg.data);
-                break;
-            case 'r':
-                clients.remove(msg.data);
+                System.out.println("[CLIENT] " + msg.data);
                 break;
             case 'f':
-                System.out.println("Message sending " + msg.data);
-                // TODO: exception handling
-                break;
-            case 'c':
-                String contacts[] = msg.data.split(" ");
-                clients = new ArrayList<String>(Arrays.asList(contacts));
-
-                // DEBUG
-                System.out.println("Received list of all connected clients");
-                System.out.println(Arrays.toString(clients.toArray()));
+                System.out.println(msg.data);
                 break;
             default:
                 throw new UnsupportedOperationException();
         }
+  //      bytebuf.release();
     }
 
     @Override

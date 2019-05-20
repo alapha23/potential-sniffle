@@ -2,93 +2,105 @@ package relayserver;
 
 import com.google.gson.Gson;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import io.netty.channel.group.ChannelGroup;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.util.CharsetUtil;
 import io.netty.util.concurrent.DefaultEventExecutor;
+import javafx.util.Pair;
+
+import javax.naming.OperationNotSupportedException;
+import java.nio.charset.Charset;
+import java.util.ArrayList;
 
 
 public class ServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
 
-    private static final ChannelGroup channels = new DefaultChannelGroup(new DefaultEventExecutor());
+    private static ArrayList<Pair<String, Channel>> clients = new ArrayList<Pair<String, Channel>>();
     Gson gson = new Gson();
 
     @Override
     public void handlerAdded(ChannelHandlerContext ctx) {
         Channel incoming = ctx.channel();
 
-        // DEBUG
-        incoming.writeAndFlush("DEBUG\r\n");
-        System.out.println("New client "+incoming.id().toString()+" connected, isWritable: "+incoming.isWritable());
-        // broadcast new joined client channel id to all channels
-        ExampleMsg msg =  new ExampleMsg();
-        msg.op = "n";
-        msg.data = incoming.id().toString();
-        for (Channel channel : channels) {
-            channel.writeAndFlush(gson.toJson(msg, ExampleMsg.class));
-        }
-
-        // reply with a list of existing clients
-        msg.op = "c";
-        msg.data = "";
-        for (Channel channel : channels) {
-                msg.data += channel.id().toString()+" ";
-        }
-        // DEBUG
-        System.out.println("Send contacts "+msg.data);
-        incoming.writeAndFlush(gson.toJson(msg, ExampleMsg.class));
-
-        // update channel list
-        channels.add(incoming);
-        // TODO: check for channel id collision?
-    }
-
-    @Override
-    public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
-        Channel incoming = ctx.channel();
-
-        // broadcast newly left channel to all
-        ExampleMsg msg = new ExampleMsg();
-        msg.op = "r";
-        msg.data = incoming.id().toString();
-        for (Channel channel : channels) {
-            channel.writeAndFlush(gson.toJson(msg, ExampleMsg.class));
-        }
-        // update channel list
-        channels.remove(incoming);
+        System.out.println("[SERVER] New client "+incoming.id().toString()+" connected, isWritable: "+incoming.isWritable());
     }
 
     @Override
     public void channelRead0(ChannelHandlerContext ctx, ByteBuf inBuffer) throws Exception {
-        // Expects a json containing dst, op, data
+        char op = (char)(inBuffer.getByte(7));
+        //{"op":"c","dst":"","data":""}
 
-        ClientOp n = new ClientOp(inBuffer);
+        switch(op) {
+            case 'n': {
+                // read client name
+                final ByteBufInputStream bis = new ByteBufInputStream(inBuffer);
+                String strbuf = bis.readLine();
+                ExampleMsg msg = gson.fromJson(strbuf, ExampleMsg.class);
 
-        // parse json
-        String dst = n.parseDst();
-        int flag = 0;
-
-        // send msg
-        for (Channel channel : channels) {
-            if(channel.id().toString().equals(dst)) {
-                channel.writeAndFlush(Unpooled.copiedBuffer(inBuffer.toString(), CharsetUtil.UTF_8));
-                flag = 1;
+                // msg.data is the name
+                Pair client = new Pair(msg.data, ctx.channel());
+                for (Pair<String, Channel> p : clients) {
+                  if(p.getKey().equals(msg.data)){
+                      ExampleMsg reply = new ExampleMsg();
+                      reply.op = "f";
+                      reply.data = "Client connection failed. Client name already in use. Please restart the client";
+                      ctx.writeAndFlush(Unpooled.copiedBuffer(gson.toJson(reply, ExampleMsg.class), CharsetUtil.UTF_8));
+                      System.out.println("[SERVER] data forwarding "+reply.data);
+                      return ;
+                  }
+                }
+                clients.add(client);
+                System.out.println("[SERVER] new client added: "+msg.data);
+                break;
             }
-        }
+            case 'r': {
+                final ByteBufInputStream bis = new ByteBufInputStream(inBuffer);
+                String strbuf = bis.readLine();
+                ExampleMsg msg = gson.fromJson(strbuf, ExampleMsg.class);
 
-        // Reply success or not
-        ExampleMsg msg = new ExampleMsg();
-        msg.op = "f";
-        msg.data = flag==1?"Success":"Failure. Invalid command";
-        ctx.writeAndFlush(Unpooled.copiedBuffer(gson.toJson(msg, ExampleMsg.class), CharsetUtil.UTF_8));
+                Pair client = new Pair(msg.data, ctx.channel());
+                clients.remove(client);
+                System.out.println("[SERVER] removed "+msg.data);
+//                inBuffer.release();
+                break;
+            }
+            case 's': {
+                CharSequence seq = inBuffer.getCharSequence(12, 20, CharsetUtil.UTF_8);
+                inBuffer.retain();
+                // dst":"abcde....",
+                String dst = seq.toString().split(":")[1].substring(1);
+                dst = dst.substring(0, dst.indexOf('\"'));
+                System.out.println("[SERVER] data forward to " + dst);
+
+                // send msg
+                int flag = 0;
+                for (Pair<String, Channel> p : clients) {
+                    if (p.getKey().equals(dst)) {
+                        p.getValue().writeAndFlush(inBuffer);
+                        flag = 1;
+                    }
+                }
+                // Reply success or not
+                ExampleMsg reply = new ExampleMsg();
+                reply.op = "f";
+                reply.dst = dst;
+                reply.data = flag == 1 ? "Success" : "Failure. Invalid destination "+dst;
+                ctx.writeAndFlush(Unpooled.copiedBuffer(gson.toJson(reply, ExampleMsg.class), CharsetUtil.UTF_8));
+                System.out.println("[SERVER] data forwarding "+reply.data);
+                break;
+            }
+            default:
+                throw new OperationNotSupportedException();
+        }
     }
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
         cause.printStackTrace();
-        channels.close();
+        //channels.close();
         ctx.close();
     }
 
